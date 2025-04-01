@@ -17,7 +17,7 @@ app.post('/api/client-history', async (req, res) => {
     return res.status(400).json({ error: 'Missing clientName in request.' });
   }
 
-  try {
+    try {
     // 1. Vyhledání klienta podle názvu
     const searchResponse = await axios.get(`${RAYNET_BASE_URL}/company`, {
       headers: {
@@ -37,24 +37,35 @@ app.post('/api/client-history', async (req, res) => {
 
     const client = companies[0]; // první shoda
 
-    // 2. Vrátíme základní info (nebo později doplníme o historii)
+    // Zatím vrátíme jen základní informace o klientovi
     res.json({
       client: {
         id: client.id,
         name: client.name,
         email: client.email,
         phone: client.phone
-      }
+      },
+      history: [
+        {
+          date: new Date().toISOString().split('T')[0],
+          type: 'Záznam z CRM',
+          summary: 'Zatím pouze test – žádná reálná historie.',
+          waitingForClient: true
+        }
+      ]
     });
 
   } catch (error) {
-    console.error('Chyba při volání Raynet API:', error.response?.data || error.message);
+    console.error('❌ CHYBA V PROXY:', error.message);
+    if (error.response) {
+      console.error('📄 Raynet odpověď:', JSON.stringify(error.response.data));
+    }
     res.status(500).json({
       error: 'Chyba při volání Raynet API',
       details: error.response?.data || error.message
     });
   }
-});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
