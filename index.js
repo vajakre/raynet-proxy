@@ -7,48 +7,72 @@ app.use(cors());
 app.use(express.json());
 
 const RAYNET_API_KEY = 'Basic aW5mb0B0YWxlbnRwcm9kdWN0aW9zLmN6OmNybS00MmJkZDczYTM3ODc0ODFmYmRkNzNhMzc4N2E4MWZhNA==';
-const RAYNET_BASE_URL = 'https://dvk.raynet.cz/api/v2/';
+const RAYNET_INSTANCE = 'dvk';
+const RAYNET_BASE_URL = 'https://app.raynet.cz/api/v2';
 
-app.all("/*", async (req, res) => {
-  const path = req.path;
-  const method = req.method.toLowerCase();
-  const fullUrl = `${RAYNET_BASE_URL}${path.replace(/^\/+/, '')}`;
+const axiosRaynet = axios.create({
+  baseURL: RAYNET_BASE_URL,
+  headers: {
+    'Authorization': RAYNET_API_KEY,
+    'X-Instance-Name': RAYNET_INSTANCE,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  }
+});
+
+app.post('/api/client-history', async (req, res) => {
+  const clientName = req.body.clientName;
+  if (!clientName) {
+    return res.status(400).json({ error: 'Chybí jméno klienta.' });
+  }
 
   try {
-    const response = await axios({
-      url: fullUrl,
-      method: method,
-      headers: {
-        'Authorization': RAYNET_API_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      data: req.body
-    });
+    // 1. Najdi klienta podle jména
+    const companyResp = await axiosRaynet.get(`/company?name[LIKE]=${encodeURIComponent(clientName)}`);
+    const companies = companyResp.data.data;
 
-    res.status(response.status).json(response.data);
+    if (!companies || companies.length === 0) {
+      return res.status(404).json({ error: `Klient '${clientName}' nebyl nalezen.` });
+    }
 
-  } catch (err) {
-    console.error("Chyba při volání Raynet API:", err.message);
+    const companyId = companies[0].id;
 
-    if (err.response) {
-      const contentType = err.response.headers['content-type'] || '';
-      const isJson = contentType.includes('application/json');
-      const fallbackData = isJson ? err.response.data : { error: 'Neplatná odpověď z Raynetu', detail: err.response.data };
+    // 2. Získání historie aktivit
+    const activityResp = await axiosRaynet.get(`/activity?company=${companyId}`);
+    const activities = activityResp.data.data;
 
-      res.status(err.response.status).json({
-        error: true,
-        status: err.response.status,
-        data: fallbackData,
-      });
-    } else {
-      res.status(500).json({
-        error: true,
-        message: "Chyba serveru nebo nedostupné API",
-        detail: err.message,
+    if (!activities || activities.length === 0) {
+      return res.json({
+        history: [],
+        message: 'Klient nemá žádnou evidovanou aktivitu.'
       });
     }
+
+    // 3. Zestručni a vrať historii
+    const history = activities.slice(0, 5).map(a => ({
+      date: a.date,
+      type: a.activityType?.name || 'Aktivita',
+      summary: a.subject || '(bez předmětu)',
+      waitingForClient: a.direction === 'OUT' // jen ukázkově
+    }));
+
+    res.json({
+      clientId: companyId,
+      history
+    });
+
+  } catch (err) {
+    console.error("CHYBA:", err.response?.data || err.message);
+    res.status(500).json({
+      error: true,
+      detail: err.response?.data || err.message
+    });
   }
+});
+
+// Default fallback
+app.all("/*", (req, res) => {
+  res.status(404).json({ error: "Neznámá cesta" });
 });
 
 const PORT = process.env.PORT || 3000;
