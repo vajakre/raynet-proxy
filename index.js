@@ -1,68 +1,57 @@
-const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
+const express = require("express");
+const axios = require("axios");
+const cors = require("cors");
 
 const app = express();
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
 
 const RAYNET_API_KEY = 'Basic aW5mb0B0YWxlbnRwcm9kdWN0aW9zLmN6OmNybS00MmJkZDczYTM3ODc0ODFmYmRkNzNhMzc4N2E4MWZhNA==';
-const RAYNET_INSTANCE = 'dvk';
+const RAYNET_BASE_URL = 'https://dvk.raynet.cz/api/v2/';
 
-app.post('/api/client-history', async (req, res) => {
-  const { clientName } = req.body;
+app.all("/*", async (req, res) => {
+  const path = req.path;
+  const method = req.method.toLowerCase();
+  const fullUrl = `${RAYNET_BASE_URL}${path.replace(/^\/+/, '')}`;
 
   try {
-    const clientSearch = await axios.get(
-      `https://${RAYNET_INSTANCE}.raynet.cz/api/v2/company/`,
-      {
-        params: { name: clientName },
-        headers: {
-          'X-Instance-Name': RAYNET_INSTANCE,
-          'Authorization': RAYNET_API_KEY
-        }
-      }
-    );
+    const response = await axios({
+      url: fullUrl,
+      method: method,
+      headers: {
+        'Authorization': RAYNET_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      data: req.body
+    });
 
-    const clientId = clientSearch.data.data[0]?.id;
-    if (!clientId) return res.status(404).json({ error: 'Klient nenalezen' });
-
-    const activities = await axios.get(
-      `https://${RAYNET_INSTANCE}.raynet.cz/api/v2/company/${clientId}/history`,
-      {
-        params: { limit: 5 },
-        headers: {
-          'X-Instance-Name': RAYNET_INSTANCE,
-          'Authorization': RAYNET_API_KEY
-        }
-      }
-    );
-
-    const history = activities.data.data.map(a => ({
-      date: a.createdAt.split('T')[0],
-      type: a.activityType?.label || 'Jiná aktivita',
-      summary: a.subject,
-      waitingForClient: a.direction === 'OUTGOING'
-    }));
-
-    res.json({ history });
+    res.status(response.status).json(response.data);
 
   } catch (err) {
-  console.error('CHYBA:', err.response?.data || err.message);
-  res.status(500).json({ 
-    error: 'Chyba při načítání dat z Raynetu.',
-    details: err.response?.data || err.message 
-  });
-}
-} catch (err) {
-  console.error('CHYBA:', err.response?.data || err.message);
-  res.status(500).json({ 
-    error: 'Chyba při načítání dat z Raynetu.',
-    details: err.response?.data || err.message 
-  });
-}
+    console.error("Chyba při volání Raynet API:", err.message);
 
+    if (err.response) {
+      const contentType = err.response.headers['content-type'] || '';
+      const isJson = contentType.includes('application/json');
+      const fallbackData = isJson ? err.response.data : { error: 'Neplatná odpověď z Raynetu', detail: err.response.data };
+
+      res.status(err.response.status).json({
+        error: true,
+        status: err.response.status,
+        data: fallbackData,
+      });
+    } else {
+      res.status(500).json({
+        error: true,
+        message: "Chyba serveru nebo nedostupné API",
+        detail: err.message,
+      });
+    }
+  }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Proxy běží na portu ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Proxy běží na portu ${PORT}`);
+});
