@@ -48,9 +48,20 @@ app.post('/api/client-history', async (req, res) => {
     res.json({ history });
 
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Chyba při načítání dat z Raynetu.' });
-  }
+  console.error('CHYBA:', err.response?.data || err.message);
+  res.status(500).json({ 
+    error: 'Chyba při načítání dat z Raynetu.',
+    details: err.response?.data || err.message 
+  });
+}
+} catch (err) {
+  console.error('CHYBA:', err.response?.data || err.message);
+  res.status(500).json({ 
+    error: 'Chyba při načítání dat z Raynetu.',
+    details: err.response?.data || err.message 
+  });
+}
+
 });
 
 const PORT = process.env.PORT || 3000;
